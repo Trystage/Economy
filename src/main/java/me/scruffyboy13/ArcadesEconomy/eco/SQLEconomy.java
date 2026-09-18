@@ -33,16 +33,16 @@ public class SQLEconomy implements Economy {
 		
 		if (sql.isConnected()) {
 			
-			try {
-				Statement statement = sql.getConnection().createStatement();
+			try (Statement statement = sql.getConnection().createStatement()) {
 				DatabaseMetaData md = sql.getConnection().getMetaData();
 				statement.execute("CREATE TABLE IF NOT EXISTS ArcadesEconomy (UUID VARCHAR(36) NOT NULL);");
 				for (Map.Entry<String, String> column : ArcadesEconomyMain.getSQLColumns().entrySet()) {
-					if (!md.getColumns(null, null, "ArcadesEconomy", column.getKey()).next()) {
-						statement.execute("ALTER TABLE ArcadesEconomy ADD " + column.getKey() + " " + column.getValue() + ";");
+					try (ResultSet columns = md.getColumns(null, null, "ArcadesEconomy", column.getKey())) {
+						if (!columns.next()) {
+							statement.execute("ALTER TABLE ArcadesEconomy ADD " + column.getKey() + " " + column.getValue() + ";");
+						}
 					}
 				}
-				statement.close();
 			} catch (SQLException e) {
 				ArcadesEconomyMain.disable("There was an error with creating the database table.");
 				return;
@@ -157,16 +157,25 @@ public class SQLEconomy implements Economy {
 
 	@Override
 	public PlayerBalance getBalance(UUID uuid) {
+		PreparedStatement statement = null;
+		ResultSet result = null;
 		try {
-			PreparedStatement statement = sql.getConnection().prepareStatement("SELECT * FROM ArcadesEconomy "
+			statement = sql.getConnection().prepareStatement("SELECT * FROM ArcadesEconomy "
 					+ "WHERE UUID=?");
-		statement.setString(1, uuid.toString());
-		ResultSet result = statement.executeQuery();
-		result.next();
-		double balance = result.getDouble("Balance");
-		return new PlayerBalance(uuid, balance);
+			statement.setString(1, uuid.toString());
+			result = statement.executeQuery();
+			result.next();
+			double balance = result.getDouble("Balance");
+			return new PlayerBalance(uuid, balance);
 		} catch (SQLException e) {
 			return new PlayerBalance(uuid, 0);
+		} finally {
+			if (result != null) {
+				try { result.close(); } catch (SQLException ignored) { }
+			}
+			if (statement != null) {
+				try { statement.close(); } catch (SQLException ignored) { }
+			}
 		}
 	}
 	
